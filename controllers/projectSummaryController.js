@@ -37,17 +37,9 @@ const snapshotDates = async (req, res, next) => {
     let tempConnection;
     try{
         tempConnection = await mysql.connection();
-        const snapshot_dates = await tempConnection.query(`SELECT DISTINCT snapshot_date FROM gantt_chart WHERE project_uid='${project_id}'`);
-        console.log("db snapshot data: ", snapshot_dates);
-        let snapshotDates = [];
-        for(let i = 0; i < snapshot_dates.length; i++){
-            snapshotDates.push({
-                snapshot_date: new Date(snapshot_dates[i].snapshot_date).toISOString().substring(0,10),
-            });
-        }
-        console.log("snap shot dates list: ", snapshotDates)
+        const snapshot_dates = await tempConnection.query(`select distinct DATE_FORMAT(snapshot_date, "%Y-%m-%d") as snapshot_date from gantt_chart where project_uid = '${project_id}';`);
         await tempConnection.releaseConnection();
-        res.status(200).json({ status: 1, snapshotDates });
+        return res.status(200).json({ status: 1, snapshotDates : snapshot_dates });
     }
     catch(error){
         await tempConnection.releaseConnection();
