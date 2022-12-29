@@ -10,9 +10,9 @@ const allProjects = async (req, res, next) => {
     let tempConnection;
     try{
         tempConnection = await mysql.connection();
-        const projects = await tempConnection.query(`select DISTINCT gantt_chart.project_name, gantt_chart.project_uid from gantt_chart`);
+        let projects = await tempConnection.query(`select DISTINCT gantt_chart.project_name, gantt_chart.project_uid from gantt_chart`);
         await tempConnection.releaseConnection();
-        // return res.status(200).json({ status: 1, projects });
+        projects = [...new Map(projects.map(v => [v.project_uid, v])).values()];
         res.json({ status: 1, projects });
     } 
     catch (error){
@@ -55,13 +55,11 @@ const taskContributors = async (req, res, next) => {
         tempConnection = await mysql.connection();
         const contributors = await tempConnection.query(`select distinct user_id, user_name from user_mapping where user_id is not null`);
         await tempConnection.releaseConnection();
-        // return res.status(200).json({ status: 1, contributors });
         res.status(200).json({ status: 1, contributors });
     } 
     catch (error) {
         await tempConnection.releaseConnection();
         console.log(error);
-        // return res.status(500).json({ status: 0, message: "SERVER_ERROR" });
         return res.status(500).json({ status: 0, message: "SERVER_ERROR" });
     }
 }
@@ -121,16 +119,13 @@ const projectSummary = async (req, res, next) => {
         overdue_tasks_data = await tempConnection.query(`select task_id, task_title, end_date, assignees from gantt_chart  where project_uid = '${project_id}' and snapshot_date='${snapshot_date}' and snapshot_date > end_date and completed=0;`);
         
         for (var i = 0; i < overdue_tasks_data.length; i++) {
-            //this is dummy delay days, later compute the delay days here
             overdue_tasks_data[i].delay_days = diffDays(new Date(snapshot_date), new Date(overdue_tasks_data[i].end_date));
             let assignee_names = [];
             const assignee = JSON.parse(overdue_tasks_data[i].assignees);
-            // console.log(assignee);
             for (var j = 0; j < assignee.length; j++) {
                 const user_names = await tempConnection.query(`select user_name from user_mapping where user_id = '${assignee[j]}'`);
                 if (!(user_names[0] == null)) {
                     assignee_names.push(user_names[0].user_name);
-                    // console.log(assignee_names)
                 }
                 else {
                     assignee_names.push("NA");
@@ -232,14 +227,16 @@ const taskDetails = async (req, res, next) => {
             and gantt_chart.snapshot_date = user_task_map.snapshot_date
             and gantt_chart.is_Parent = false and gantt_chart.is_milestone = false 
             and gantt_chart.snapshot_date='${snapshot_date}' and gantt_chart.project_uid = '${project_id}';`);
-        
+            await tempConnection.releaseConnection();
             task_details = task_details_without_assignees.map((task)=>{
                 task.user_name = "NA"
                 return task;
             });
         }
+        else {
+            await tempConnection.releaseConnection();
+        }
         task_details =  [...new Map(task_details.map(v => [v.uid, v])).values()];
-       // console.log("task list: ", task_details)
         res.status(200).json({ status: 1, task_details });
     }
     catch(error){
@@ -281,7 +278,6 @@ const contributorDetail = async (req, res, next) =>{
             contributorData[i]["task_status"] = task_status;
             // contributorData[i]["crr_end"] = compare_data[i].end_date;
         }
-       // console.log("contributo data: ", contributorData)
         await tempConnection.releaseConnection();
         res.status(200).json({ status: 1, complianceScore: "", productivityScore: "", timelinessScore: "", contributorData });
     }
@@ -361,7 +357,6 @@ const performanceMetrics = async (req, res, next) => {
             let dpd = [];
             dpd.push(dpdtask_baseline[i].gantt_uid);
             dpd.push(dpdtask_baseline[i].dpd_uid);
-            // dpd.set(dpdtask_baseline[i].gantt_uid, dpdtask_baseline[i].dpd_uid)
             dpdMappingBaseline.push(dpd);
         }
 
@@ -423,9 +418,10 @@ const performanceMetrics = async (req, res, next) => {
                 user_delay.push(userNetDelay);
             }
         }
+        await tempConnection.releaseConnection();
         console.log("This is user delay", user_delay);
         res.json({ msg: "done", basedata, actdata, delayedArr, dpdMapping, dpdMappingBaseline, user_delay});
-        await tempConnection.releaseConnection();
+        
     }
     catch(error){
         await tempConnection.releaseConnection();
@@ -556,8 +552,6 @@ const loadLatestProjectSummary = async (req, res, next) => {
 
         //notes 
         let notes = await tempConnection.query(`select id, note, DATE_FORMAT(createdAt, "%d-%b-%Y %l:%i %p") as created_at from project_notes where project_id='${project_id}';`);
-
-
         await tempConnection.releaseConnection();
         res.json({
             project_details: {  project_id, snapshot_date, compare_to: "", progress, timeElapsed, bufferUsed: 0, expected_end   },
@@ -648,7 +642,6 @@ const deleteSnapshot = async (req, res, next) => {
         if(values.length != 0){
             await tempConnection.query(`delete from user_task_map where id in (?);`, [values]);
         }
-        
         await tempConnection.releaseConnection();
         res.json({
             status: 1,

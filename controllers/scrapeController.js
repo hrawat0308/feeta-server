@@ -15,7 +15,7 @@ const scrape = async (req, res, next) => {
     }
     
     await instaganttApi(req, res, next);
-    await userTaskMap(req, res, next);
+    
 }
 
 const instaganttApi = async (req, res, next) => {
@@ -29,6 +29,8 @@ const instaganttApi = async (req, res, next) => {
     let userAssignee = [];
     try{
         const response = await axios.get(snapshot_url+`.json`);
+        //** Establish MySQL connection */
+        tempConnection = await mysql.connection();
         if(response){
             let snapshot = await response.data;
             const {tasks, project} = snapshot;
@@ -117,9 +119,6 @@ const instaganttApi = async (req, res, next) => {
             
         }
         
-        //** Establish MySQL connection */
-        tempConnection = await mysql.connection();
-
         //** Insert into project master */
         await tempConnection.query('INSERT INTO project_master (project_id, project, gantt_url, snapshot_date) values (?)', [projectDetails]);
         console.log("Project master data inserted");
@@ -146,6 +145,7 @@ const instaganttApi = async (req, res, next) => {
             } 
         }
         
+        await userTaskMap(req, res, next);
         await tempConnection.releaseConnection();
         return res.status(201).json({ status: 1, 
                                     project_id: project_id, 
@@ -154,7 +154,7 @@ const instaganttApi = async (req, res, next) => {
                                 );
     }
     catch(err){
-        // await tempConnection.releaseConnection();
+        await tempConnection.releaseConnection();
         console.log(err);
         return res.status(500).json({
             status: 0,
@@ -197,6 +197,7 @@ const userTaskMap = async (req, res, next) => {
     
         await tempConnection.query('INSERT INTO user_task_map (project_id, task_uid, assignee_id, snapshot_date) VALUES ?', [userTaskVal]);
         console.log("user_task_map data inserted!!");
+        await tempConnection.releaseConnection();
     }
     catch(error){
         await tempConnection.releaseConnection();
