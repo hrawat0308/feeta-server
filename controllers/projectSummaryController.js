@@ -682,6 +682,83 @@ const getFormattedDate = (date) => {
     return `${da}-${mo}-${ye}`; 
 }
 
+const progressBasedDuration = async (req, res, next) => {
+    const projectID = req.query.project_id;
+    const snapshot_date = req.query.snapshot_date;
+    let tempConnection;
+    try{
+        tempConnection = await mysql.connection();
+        let progress = await tempConnection.query(`select (SUM((progress * (DATEDIFF(end_date, start_date)+1))) / SUM(DATEDIFF(end_date, start_date)+1)) as progress 
+        from gantt_chart where project_uid = '${projectID}' and snapshot_date = '${snapshot_date}' 
+        and is_parent is false;`);
+        await tempConnection.releaseConnection();
+        progress = parseFloat(progress[0].progress);
+        res.json({
+            status: 1,
+            progress
+        });
+    }
+    catch(error){
+        await tempConnection.releaseConnection();
+        console.log(error);
+        return res.status(500).json({ status: 0, message: "SERVER_ERROR", error });
+    }
+}
+
+const progressBasedEffort = async (req, res, next) => {
+    const projectID = req.query.project_id;
+    const snapshot_date = req.query.snapshot_date;
+    let tempConnection;
+    try{
+        tempConnection = await mysql.connection();
+        const progressData = await tempConnection.query(`select estimated_hour, actual_hour, completed, (DATEDIFF(end_date,start_date)+1) as days from gantt_chart 
+        where project_uid = '${projectID}' 
+        and snapshot_date = '${snapshot_date}' 
+        and is_parent is false;`);
+        await tempConnection.releaseConnection();
+        let effort = 0;
+        let totalEffort = 0;
+        progressData.forEach((prog)=>{
+            if(prog.completed){
+                if(prog.actual_hour){
+                    effort = effort + prog.actual_hour;
+                    totalEffort = totalEffort + prog.actual_hour;
+                }
+                else if(prog.estimated_hour){
+                    effort = effort + prog.estimated_hour;
+                    totalEffort = totalEffort + prog.estimated_hour;    
+                }
+                else{
+                    effort = effort + (6 * prog.days);
+                    totalEffort = totalEffort + (6 * prog.days);
+                }
+            }
+            else{
+                if(prog.actual_hour){
+                    totalEffort = totalEffort + prog.actual_hour;
+                }
+                else if(prog.estimated_hour){
+                    totalEffort = totalEffort + prog.estimated_hour;    
+                }
+                else{
+                    totalEffort = totalEffort + (6 * prog.days);
+                }
+            }
+        });
+        res.json({
+            status: 1,
+            effort,
+            totalEffort,
+            progress : parseFloat(((effort/totalEffort)*100).toFixed(3))
+        });
+    }
+    catch(error){
+        await tempConnection.releaseConnection();
+        console.log(error);
+        return res.status(500).json({ status: 0, message: "SERVER_ERROR", error });
+    }
+}
+
 exports.allProjects = allProjects;
 exports.snapshotDates = snapshotDates;
 exports.taskContributors = taskContributors;
@@ -693,3 +770,5 @@ exports.addNote = addNote;
 exports.getNote = getNote;
 exports.loadLatestProjectSummary = loadLatestProjectSummary;
 exports.deleteSnapshot = deleteSnapshot;
+exports.progressBasedDuration = progressBasedDuration;
+exports.progressBasedEffort = progressBasedEffort;
