@@ -655,6 +655,44 @@ const deleteSnapshot = async (req, res, next) => {
     }
 }
 
+const addBuffer = async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            status: 0,
+            msg: "project ID or Snapshot Date not provided!!"
+        });
+    }
+    let tempConnection;
+    let projectID = req.query.project_id;
+    let techDifficulty = req.query.techDifficulty == 'low' ? 1 : req.query.techDifficulty == 'medium' ? 2 : req.query.techDifficulty == 'high' ? 3 : -1;
+    let taskInterdpd = req.query.taskInterdpd == 'low' ? 1 : req.query.taskInterdpd == 'medium' ? 2 : req.query.taskInterdpd == 'high' ? 3 : -1;
+    let projectDuration = -1;
+    let buffer;
+    try{
+        tempConnection = await mysql.connection();
+        const oldest_snapshot_date = await tempConnection.query(`select DATE_FORMAT(min(snapshot_date), "%Y-%m-%d") as snapshot_date from gantt_chart where project_uid = '${projectID}'`);
+        const projectDates = await tempConnection.query(`select DATE_FORMAT(min(start_date), "%Y-%m-%d") as start_date, DATE_FORMAT(MAX(end_date), "%Y-%m-%d") as due_date, DATE_FORMAT(snapshot_date, "%Y-%m-%d") as curr_date from gantt_chart where project_uid = '${projectID}' and snapshot_date = '${oldest_snapshot_date[0].snapshot_date}';`);
+        await tempConnection.releaseConnection();
+        const start_date = new Date(projectDates[0].start_date);
+        const due_date = new Date(projectDates[0].due_date);
+        projectDuration = diffDays(due_date, start_date)+1;
+        projectDuration = projectDuration/30;
+        buffer = projectDuration * (techDifficulty + taskInterdpd);
+        res.json({
+            projectDuration,
+            techDifficulty,
+            taskInterdpd,
+            buffer
+        });
+    }
+    catch(error){
+        await tempConnection.releaseConnection();
+        console.log(error);
+        return res.status(500).json({ status: 0, message: "SERVER_ERROR", error });
+    }
+}
+
 //**Helper Functions */
 const isSameDay = (d1, d2) => {
     return d1.getFullYear() === d2.getFullYear() &&
@@ -770,5 +808,6 @@ exports.addNote = addNote;
 exports.getNote = getNote;
 exports.loadLatestProjectSummary = loadLatestProjectSummary;
 exports.deleteSnapshot = deleteSnapshot;
+exports.addBuffer = addBuffer;
 exports.progressBasedDuration = progressBasedDuration;
 exports.progressBasedEffort = progressBasedEffort;
