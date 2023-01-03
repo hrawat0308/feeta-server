@@ -242,11 +242,17 @@ const projectSummary = async (req, res, next) => {
         //overdue tasks new logic
         let overdue_tasks_data;
         overdue_tasks_data = await tempConnection.query(`select task_id, task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, assignees,
-        ABS(DATEDIFF(snapshot_date, end_date))+1 as delay_days, "Overdue" as status
+        ABS(DATEDIFF(snapshot_date, end_date))+1 as delay_days, "Overdue" as status, task_type, parent_id
         from gantt_chart  
         where project_uid = '${project_id}' and snapshot_date='${snapshot_date}' 
         and snapshot_date > end_date and completed=0 and is_parent is false and is_milestone is false;`);
-        
+        let parents_title = [];
+        overdue_tasks_data.filter((overdue)=>{
+            if(overdue.parent_id){
+                parents_title.push(overdue.parent_id);
+            }
+        });
+
         //delayed tasks new logic
         const allMgt = await tempConnection.query(`select uid, task_title, DATE_FORMAT(start_date,"%Y-%m-%d") as start_date ,DATE_FORMAT(end_date,"%Y-%m-%d") as end_date
         from gantt_chart  
@@ -255,7 +261,7 @@ const projectSummary = async (req, res, next) => {
         let delay_tasks_data = [];
         const delay_params = allMgt.map((mgt)=> `row ('${mgt.end_date}', '${mgt.uid}', '${compare_to}', '${project_id}', '${mgt.end_date}')`);
         
-        delay_tasks_data = await tempConnection.query(`select task_id, task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, assignees,
+        delay_tasks_data = await tempConnection.query(`select task_id, task_type, parent_id ,task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, params.p1 as Actual_end_date,assignees,
         ABS(DATEDIFF(params.p1, end_date))+1 as delay_days, "delay" as status from
         (values ${delay_params.join(', ')}) 
         params (p1, p2, p3, p4 ,p5)
@@ -263,9 +269,28 @@ const projectSummary = async (req, res, next) => {
         on gc.uid = params.p2
         and gc.snapshot_date = params.p3
         and gc.project_uid = params.p4
-        and gc.end_date = params.p5
+        and gc.end_date < params.p5
         and gc.completed is true;`);
+
+        delay_tasks_data.filter((delay)=>{
+            if(delay.parent_id){
+                parents_title.push(delay.parent_id);
+            }
+        });
+
+        let parentIDTitleMap;
+        if(parents_title.length !== 0){
+            const getParentsTitle = await tempConnection.query(`select uid, task_title from gantt_chart where uid in (?) and snapshot_date = '${snapshot_date}';`, [parents_title]);
+            if(getParentsTitle.length !== 0){
+                parentIDTitleMap = new Map(getParentsTitle.map((parent)=>[parent.uid, parent.task_title]));
+            }
+        }
+    
         overdue_tasks_data = [...overdue_tasks_data, ...delay_tasks_data];
+        overdue_tasks_data.forEach((task)=>{
+            task.parent_title = parentIDTitleMap.has(task.parent_id) ? parentIDTitleMap.get(task.parent_id) : "NA";
+        });
+
         let allAssignee = [];
         for (var i = 0; i < overdue_tasks_data.length; i++) {
             let assignee = JSON.parse(overdue_tasks_data[i].assignees);
@@ -296,18 +321,75 @@ const projectSummary = async (req, res, next) => {
 
         //milestone new logic
         let milestone_task;
-        const milestone_task_upcoming = await tempConnection.query(`SELECT task_id, task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, "Upcoming" as status 
+        const milestone_task_upcoming = await tempConnection.query(`SELECT task_id, task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, "Upcoming" as status, 
+        ABS(DATEDIFF('${snapshot_date}', end_date)) as delay_days
         FROM gantt_chart WHERE 
         is_milestone = 1 and project_uid = '${project_id}' 
         and snapshot_date = '${snapshot_date}' 
         and end_date >= '${snapshot_date}'
-        order by end_date asc limit 2;`);
-        const milestone_task_completed = await tempConnection.query(`SELECT task_id, task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, "Completed" as status 
+        order by end_date asc limit 3;`);
+        let milestone_task_completed = await tempConnection.query(`SELECT task_id, uid ,task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, completed,"Completed" as status 
         FROM gantt_chart WHERE 
         is_milestone = 1 and project_uid = '${project_id}' 
         and snapshot_date = '${snapshot_date}' 
         and end_date <= '${snapshot_date}'
-        order by end_date asc limit 2;`);
+        order by end_date;`);
+        
+        const incomplete_milestone = [];
+        milestone_task_completed.forEach((milestone)=>{
+            if(!milestone.completed){
+                incomplete_milestone.push(milestone.uid);
+            }
+        });
+        
+        let check_milestone_pred = [];
+        if(incomplete_milestone.length !== 0){
+            check_milestone_pred = await tempConnection.query(`select uid, progress ,completed from gantt_chart where uid in (
+                select dpd_uid from depends_on_map
+                where gantt_uid in (?)
+                and snapshot_date = '${snapshot_date}') and snapshot_date = '${snapshot_date}';`, [incomplete_milestone]);    
+        }
+        
+        const incomplete_milestone_pred = [];
+        check_milestone_pred.forEach((pred)=>{
+                if(pred.progress !== 100 || !pred.completed){
+                    incomplete_milestone_pred.push(pred.uid);
+                }
+        });
+        
+        if(incomplete_milestone_pred.length !== 0){
+            const truly_incomplete_milestone = await tempConnection.query(`select gantt_uid from depends_on_map
+            where dpd_uid in (?)
+            and snapshot_date = '${snapshot_date}';`, [incomplete_milestone_pred]);
+            
+            truly_incomplete_milestone.forEach((incomplete_milestone)=>{
+                milestone_task_completed = milestone_task_completed.filter((milestone)=>{
+                    if(milestone.uid !== incomplete_milestone.gantt_uid){
+                        return milestone;
+                    }
+                });
+            });
+        }
+        const truly_completed_milestone = [];
+        milestone_task_completed.forEach((milestone)=>{
+            if(milestone.completed === 0){
+                truly_completed_milestone.push(milestone.task_id);
+            }
+        });
+        
+        if(truly_completed_milestone.length !== 0){
+            await tempConnection.query(`update gantt_chart set progress = 1, completed = true where task_id 
+                in (?) and snapshot_date = '${snapshot_date}';`, [truly_completed_milestone]);
+        }
+
+        milestone_task_completed = await tempConnection.query(`SELECT task_id, task_title, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, "Completed" as status, 
+        ABS(DATEDIFF('${snapshot_date}', end_date)) as delay_days
+        FROM gantt_chart WHERE 
+        is_milestone = 1 and project_uid = '${project_id}' 
+        and snapshot_date = '${snapshot_date}' 
+        and end_date <= '${snapshot_date}'
+        and completed is true
+        order by end_date limit 2;`);
         milestone_task = [...milestone_task_completed, ...milestone_task_upcoming];
 
         // * rework*/
