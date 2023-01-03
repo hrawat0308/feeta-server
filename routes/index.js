@@ -14,7 +14,7 @@ router.get('/snapshot-dates/:id',projectSummaryController.snapshotDates);
 router.get('/project-summary', projectSummaryController.projectSummary);
 router.get('/task-details', projectSummaryController.taskDetails);
 router.get('/contributor-data', projectSummaryController.contributorDetail);
-router.get('/performance', projectSummaryController.performanceMetrics);
+router.get('/performance', projectSummaryController.timelinessTaskDetails);
 router.post('/add-note', projectSummaryController.addNote);
 router.get('/get-notes/:id', projectSummaryController.getNote);
 router.get('/latest-project-summary', projectSummaryController.loadLatestProjectSummary);
@@ -28,5 +28,6 @@ router.get('/task-contributors', projectSummaryController.taskContributors);
 //** Test Routes */
 router.get('/progress/durationBased', projectSummaryController.progressBasedDuration);
 router.get('/progress/effortBased', projectSummaryController.progressBasedEffort);
+router.get('/timelinessTaskDetails', projectSummaryController.timelinessTaskDetails);
 
 module.exports = router;

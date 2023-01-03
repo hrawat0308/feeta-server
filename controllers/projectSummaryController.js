@@ -653,6 +653,165 @@ const performanceMetrics = async (req, res, next) => {
     }
 }
 
+const timelinessTaskDetails = async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            status: 0,
+            msg: "project Id, snapshot date, baseline date are not provided!!"
+        });
+    }
+    let tempConnection;
+    const project_id = req.query.project_id;
+    const snapshot_date = req.query.snapshot_date;
+    const baseline_date = req.query.baseline_date;
+    let working_days; let payload_dates = [];
+    try{
+        tempConnection = await mysql.connection();
+        const base_data = await tempConnection.query(`select task_id, uid, assignees, parent_id ,on_cp, task_type, task_title, DATE_FORMAT(start_date,"%Y-%m-%d") as start_date, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, DATE_FORMAT(snapshot_date,"%Y-%m-%d") as snapshot_date from gantt_chart where snapshot_date = '${baseline_date}' and project_uid = '${project_id}' and is_parent = 0 and is_milestone is false order by start_date`);
+        const actual_data = await tempConnection.query(`select task_id, uid, assignees, parent_id ,on_cp, task_type, task_title, DATE_FORMAT(start_date,"%Y-%m-%d") as start_date, DATE_FORMAT(end_date,"%Y-%m-%d") as end_date, DATE_FORMAT(snapshot_date,"%Y-%m-%d") as snapshot_date from gantt_chart where snapshot_date = '${snapshot_date}' and project_uid = '${project_id}' and is_parent = 0 and is_milestone is false order by start_date`);
+        let delayArray = [...actual_data];
+        const baselineData = [...base_data];
+        working_days = {"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false};
+        // payload_dates = JSON.parse([{"name": "EL","color": "highlight-1","end": "2023-01-02","id": "0hu6PnaNquFjaHvTmX7l","is_holiday": true,"on_workspace": true,"start": "2023-01-02","supplier_project_id": "","disabled": false,"user_id": "lPcX4XZJXP0MRb0XBO10"}]);
+        const task_id_data_map = new Map(baselineData.map(task => [task.uid, task]));
+        let diffAEBE;
+        const delayArrforMap = [];
+        let allAssignee = [];
+        let allParents = [];
+        delayArray.forEach((task)=>{
+            if(task_id_data_map.has(task.uid)){
+                task.base_end_date = task_id_data_map.get(task.uid).end_date;
+                diffAEBE = diffDays_inPerformance(new Date(task.end_date), new Date(task.base_end_date));
+                task.AEsubBE = diffAEBE;
+                numOfNonWorkingDays = checkWeekends(new Date(task.start_date), new Date(task.end_date),working_days, payload_dates);
+                task.num_of_nonWorkingDays = numOfNonWorkingDays;
+                task.user_delay = [];
+                task.predec_delay = 0;
+                task.net_delay = 0;
+            }
+            else{
+                task.base_end_date = "NA";
+                task.predec_delay = 0;
+                task.AEsubBE = 0;
+                task.net_delay = 0;
+            }
+            task.assignees = JSON.parse(task.assignees);
+            task.assignees.forEach((assignee)=>{if(assignee){allAssignee.push(assignee)}});    
+            delayArrforMap.push([task.uid, task]);
+            allParents.push(task.parent_id);    
+        });
+        const delayArrayMap = new Map(delayArrforMap);
+        let userNameMap;
+        if(allAssignee.length !== 0){
+            let user_names = await tempConnection.query(`select user_id, user_name from user_mapping where user_id in (?);`, [allAssignee]);
+            if(user_names.length !== 0){
+                userNameMap = new Map(user_names.map(u => [u.user_id, u.user_name]));
+            }
+        }
+        let parentIDTitleMap;
+        if(allParents.length !== 0){
+            const getParentsTitle = await tempConnection.query(`select uid, task_title from gantt_chart where uid in (?) and snapshot_date = '${snapshot_date}';`, [allParents]);
+            if(getParentsTitle.length !== 0){
+                parentIDTitleMap = new Map(getParentsTitle.map((parent)=>[parent.uid, parent.task_title]));
+            }
+        }
+        
+        let dpdMapping = [];
+        const dpdtask = await tempConnection.query(`select gantt_uid, dpd_uid from depends_on_map where snapshot_date = '${snapshot_date}'`);
+        dpdtask.forEach((task)=>{
+            let dpd = [];
+            dpd.push(task.gantt_uid);
+            dpd.push(task.dpd_uid);
+            dpdMapping.push(dpd);
+        });
+        
+        let dpdMappingBaseline = [];
+        const dpdtask_baseline = await tempConnection.query(`select gantt_uid, dpd_uid from depends_on_map where snapshot_date = '${baseline_date}'`);
+        await tempConnection.releaseConnection();
+        
+        dpdtask_baseline.forEach((task)=>{
+            let dpd = [];
+            dpd.push(task.gantt_uid);
+            dpd.push(task.dpd_uid);
+            dpdMappingBaseline.push(dpd);
+        });
+
+        for(let i=0; i < dpdMapping.length; i++){
+            let pred_task_uid = dpdMapping[i][1];
+            let successor_uid = dpdMapping[i][0];
+            if(delayArrayMap.has(pred_task_uid)){
+                const pred = delayArrayMap.get(pred_task_uid);
+                let new_predec_uid;
+                if(pred.base_end_date == "NA"){
+                    let predecessor_delay = 0;
+                    for(var k = 0; k < dpdMappingBaseline.length; k++){
+                        if(successor_uid == dpdMappingBaseline[k][0]){
+                            new_predec_uid = dpdMappingBaseline[k][1];
+                            if(delayArrayMap.has(new_predec_uid)){
+                                const a = delayArrayMap.get(new_predec_uid);
+                                let predDelay = diffDays(new Date(pred.end_date), new Date(a.base_end_date));
+                                predecessor_delay = Math.max(predDelay, predecessor_delay);
+                            }
+
+                            if(delayArrayMap.has(successor_uid)){
+                                const b = delayArrayMap.get(successor_uid);
+                                b.predec_delay = predecessor_delay;
+                                b.net_delay = b.AEsubBE - b.predec_delay - b.num_of_nonWorkingDays;
+                                delayArrayMap.set(successor_uid, b);
+                            }
+                        }
+                    }
+                }
+                else{
+                    let predecessor_delay = 0;
+                    let predDelay = diffDays(new Date(pred.end_date), new Date(pred.base_end_date));
+                    predecessor_delay = Math.max(predDelay, predecessor_delay);
+                    if(delayArrayMap.has(successor_uid)){
+                        const b = delayArrayMap.get(successor_uid);
+                        b.predec_delay = predecessor_delay;
+                        b.net_delay = b.AEsubBE - b.predec_delay - b.num_of_nonWorkingDays;
+                        delayArrayMap.set(successor_uid, b);
+                    }
+                }
+            }
+        }
+        
+        delayArray = [...delayArrayMap.values()]
+        delayArray.forEach((task)=>{
+            const assignees = [];
+            for(let i = 0; i < task.assignees.length; i++){
+                if(task.assignees[i]){
+                    if(userNameMap.has(task.assignees[i])){
+                        assignees.push(userNameMap.get(task.assignees[i]));
+                    }
+                }
+                else{
+                    break;
+                }
+            }
+            task.assignees = assignees;
+            if(task.parent_id){
+                if(parentIDTitleMap.has(task.parent_id)){
+                    task.parent_name = parentIDTitleMap.get(task.parent_id);
+                }
+                else{
+                    task.parent_name = "";
+                }
+            }else{
+                task.parent_name = "";
+            }
+        });
+       
+        res.json({ delayArray});
+    }
+    catch(error){
+        await tempConnection.releaseConnection();
+        console.log(error);
+        return res.status(500).json({ status: 0, message: "SERVER_ERROR" });
+    }
+}
+
 const addNote = async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -917,6 +1076,41 @@ const addBuffer = async (req, res, next) => {
 }
 
 //**Helper Functions */
+const checkWeekends = (start_date, end_date, working_days, payload_dates)=>{
+    let count = 0;
+    let loop = new Date(start_date);
+    while(loop <= end_date){
+    //checking if it was a working day or not by comparing dates from working_day object from JSON payload
+        if(!working_days[loop.getDay()]){
+            count++;
+        }
+    
+    // check if any date b/w start and end date was a company holiday ???
+        // for(let i = 0; i < payload_dates.length; i++){
+        //     if(payload_dates[i]["user_id"] == false){
+        //         if(payload_dates[i]["start"] == loop.getFullYear()+"-"+(loop.getMonth()+1)+"-"+loop.getDate()){   
+        //             let numOfDays = numOfCompanyHoliday(new Date(payload_dates[i]["start"]), new Date(payload_dates[i]["end"]));
+        //             count += numOfDays;
+        //         }
+        //     }
+        // }
+        let newDate = loop.setDate(loop.getDate()+1);
+        loop = new Date(newDate);
+    }
+    return count;    
+}
+
+const numOfCompanyHoliday = (start_date, end_date) => {
+    let count = 0;
+    let loop = new Date(start_date);
+    while(loop <= end_date){
+        count++;
+        let newDate = loop.setDate(loop.getDate()+1);
+        loop = new Date(newDate);
+    }
+    return count;
+}
+
 const isSameDay = (d1, d2) => {
     return d1.getFullYear() === d2.getFullYear() &&
       d1.getDate() === d2.getDate() &&
@@ -1034,3 +1228,4 @@ exports.deleteSnapshot = deleteSnapshot;
 exports.addBuffer = addBuffer;
 exports.progressBasedDuration = progressBasedDuration;
 exports.progressBasedEffort = progressBasedEffort;
+exports.timelinessTaskDetails = timelinessTaskDetails;
