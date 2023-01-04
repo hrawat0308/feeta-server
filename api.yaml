@@ -7,7 +7,7 @@ info:
   server:
     url: "http://139.59.84.213:3000"
     description: "DEVELOPMENT SERVER"
-    url: "http://157.245.100.190"
+    url: ""
     description: "PRODUCTION SERVER"
 
 schemes: [http, https]

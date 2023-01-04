@@ -757,7 +757,8 @@ const timelinessTaskDetails = async (req, res, next) => {
                             if(delayArrayMap.has(successor_uid)){
                                 const b = delayArrayMap.get(successor_uid);
                                 b.predec_delay = predecessor_delay;
-                                b.net_delay = b.AEsubBE - b.predec_delay - b.num_of_nonWorkingDays;
+                                b.net_delay = b.AEsubBE;
+                                b.net_delay = (b.net_delay == 0) ? b.net_delay : b.net_delay -  b.predec_delay - b.num_of_nonWorkingDays;
                                 delayArrayMap.set(successor_uid, b);
                             }
                         }
@@ -770,7 +771,8 @@ const timelinessTaskDetails = async (req, res, next) => {
                     if(delayArrayMap.has(successor_uid)){
                         const b = delayArrayMap.get(successor_uid);
                         b.predec_delay = predecessor_delay;
-                        b.net_delay = b.AEsubBE - b.predec_delay - b.num_of_nonWorkingDays;
+                        b.net_delay = b.AEsubBE;
+                        b.net_delay = (b.net_delay == 0) ? b.net_delay : b.net_delay -  b.predec_delay - b.num_of_nonWorkingDays;
                         delayArrayMap.set(successor_uid, b);
                     }
                 }

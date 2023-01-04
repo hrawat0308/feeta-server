@@ -28,6 +28,5 @@ router.get('/task-contributors', projectSummaryController.taskContributors);
 //** Test Routes */
 router.get('/progress/durationBased', projectSummaryController.progressBasedDuration);
 router.get('/progress/effortBased', projectSummaryController.progressBasedEffort);
-router.get('/timelinessTaskDetails', projectSummaryController.timelinessTaskDetails);
 
 module.exports = router;
