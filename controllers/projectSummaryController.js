@@ -402,7 +402,7 @@ const projectSummary = async (req, res, next) => {
         const goal_curr_snapshot = await tempConnection.query(`select max(end_date) as curr_end from gantt_chart where snapshot_date='${snapshot_date}' and project_uid = '${project_id}'`);
         const goal_compare_snapshot = await tempConnection.query(`select max(end_date) as prev_end from gantt_chart where snapshot_date='${compare_to}' and project_uid = '${project_id}'`);
         del_goal_end = diffDays(goal_curr_snapshot[0].curr_end, goal_compare_snapshot[0].prev_end);
-        
+        const gantt_url = await tempConnection.query(`select gantt_url from project_master where project_id = '${project_id}' and snapshot_date = '${snapshot_date}';`);
 
         await tempConnection.releaseConnection();
 
@@ -415,7 +415,7 @@ const projectSummary = async (req, res, next) => {
             delReworkLastWeek: ""
         }
         res.status(200).json(
-            { project_id, snapshot_date, compare_to, progress, timeElapsed, bufferUsed: 0, 
+            { project_id,  url : gantt_url[0].gantt_url ,snapshot_date, compare_to, progress, timeElapsed, bufferUsed: 0, 
               expected_end, schedule, overdue_tasks_data, milestone_task 
             });
     }
