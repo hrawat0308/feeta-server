@@ -1310,6 +1310,31 @@ const progressBasedEffort = async (req, res, next) => {
     }
 }
 
+const getCompareTodate = async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            status: 0,
+            msg: "project ID or snapshot date is not provided!!"
+        });
+    }
+    const projectID = req.query.project_id;
+    const snapshot_date = req.query.snapshot_date;
+    let dates = [];
+    let tempConnection;
+    try{
+        tempConnection = await mysql.connection();
+        dates = await tempConnection.query(`select distinct DATE_FORMAT(snapshot_date, "%Y-%m-%d") as snapshot_date from gantt_chart where project_uid = '${projectID}' and snapshot_date < "${snapshot_date}";`);
+        await tempConnection.releaseConnection();
+        res.status(200).json({ status: 1, snapshotDates : dates });
+    }
+    catch(error){
+        await tempConnection.releaseConnection();
+        console.log(error);
+        return res.status(500).json({ status: 0, message: "SERVER_ERROR", error });
+    }
+}
+
 exports.allProjects = allProjects;
 exports.snapshotDates = snapshotDates;
 exports.taskContributors = taskContributors;
@@ -1325,3 +1350,4 @@ exports.addBuffer = addBuffer;
 exports.progressBasedDuration = progressBasedDuration;
 exports.progressBasedEffort = progressBasedEffort;
 exports.timelinessTaskDetails = timelinessTaskDetails;
+exports.getCompareTodate = getCompareTodate;

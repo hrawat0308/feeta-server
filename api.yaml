@@ -783,3 +783,54 @@ paths:
           description: successfull response
           schema: 
             type: string
+
+  /compare-to-dates:
+    get:
+      summary: return snapshot dates
+      description: returns all the snapshot dates less than the selected snapshot date
+      parameters:
+        - in: query
+          name: project_id
+          schema:
+            type: string
+          required: true
+          description: The project id whos details are needed to be fetched
+        - in: query
+          name: snapshot_date
+          schema:
+            type: string
+          required: true
+          description: selected snapshot date  
+      responses:
+        200:
+          schema: 
+            type: object
+            properties:
+              status:
+                type: integer
+              snapshot_dates:
+                type: array
+                items: 
+                  type: object
+                  properties: 
+                    snapshot_date:
+                      type: string
+                   
+        400:
+          description: Bad request. project id required
+          schema:
+            type: object
+            properties: 
+              status: 
+                type: integer
+              message:
+                type: string
+        500:
+          description: Internal server error
+          schema:
+            type: object
+            properties: 
+              status: 
+                type: integer
+              message:
+                type: string

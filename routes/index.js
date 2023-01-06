@@ -11,6 +11,7 @@ router.post('/register-snapshot', [
     ]
 ,scrapeController.scrape);
 router.get('/snapshot-dates/:id',projectSummaryController.snapshotDates);
+router.get('/compare-to-dates',projectSummaryController.getCompareTodate);
 router.get('/project-summary', projectSummaryController.projectSummary);
 router.get('/task-details', projectSummaryController.taskDetails);
 router.get('/contributor-data', projectSummaryController.contributorDetail);
