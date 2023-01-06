@@ -945,7 +945,7 @@ const getNote = async (req, res, next) => {
     let project_id = req.params.id;
     try{
         tempConnection = await mysql.connection();
-        const notes = await tempConnection.query(`select project_id, note, createdAt from project_notes where project_id = '${project_id}'`);
+        const notes = await tempConnection.query(`select id, project_id, note, createdAt from project_notes where project_id = '${project_id}'`);
         await tempConnection.releaseConnection();
         res.status(200).json({ status: 1, notes });
     }
@@ -1335,6 +1335,34 @@ const getCompareTodate = async (req, res, next) => {
     }
 }
 
+//delete a note
+const deleteNote = async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            status: 0,
+            msg: "Project ID and note ID not provided is not provided!!"
+        });
+    }
+    let project_id = req.query.project_id;
+    let note_id = req.query.note_id;
+    let tempConnection;
+    try{
+        tempConnection = await mysql.connection();
+        const result = await tempConnection.query(`delete from project_notes where project_id = '${project_id}' and id = '${note_id}';`);
+        await tempConnection.releaseConnection();
+        res.json({
+            status : 1,
+            msg : "Note deleted!!"
+        });
+    }
+    catch(error){
+        await tempConnection.releaseConnection();
+        console.log(error);
+        return res.status(500).json({ status: 0, message: "SERVER_ERROR" });
+    }
+}
+
 exports.allProjects = allProjects;
 exports.snapshotDates = snapshotDates;
 exports.taskContributors = taskContributors;
@@ -1351,3 +1379,4 @@ exports.progressBasedDuration = progressBasedDuration;
 exports.progressBasedEffort = progressBasedEffort;
 exports.timelinessTaskDetails = timelinessTaskDetails;
 exports.getCompareTodate = getCompareTodate;
+exports.deleteNote = deleteNote;

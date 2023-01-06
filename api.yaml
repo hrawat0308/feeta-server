@@ -834,3 +834,24 @@ paths:
                 type: integer
               message:
                 type: string
+
+  /note:
+    delete:
+      summary: delete a note
+      description: delete note, given project ID and note id
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          type: string
+          description: project id of the note
+        - in: query
+          name: note_id
+          required: true
+          type: string
+          description: note id of note
+      responses:
+        200: 
+          description: successfull response
+          schema: 
+            type: string

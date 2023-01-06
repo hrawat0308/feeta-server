@@ -21,6 +21,7 @@ router.get('/get-notes/:id', projectSummaryController.getNote);
 router.get('/latest-project-summary', projectSummaryController.loadLatestProjectSummary);
 router.delete('/snapshot', projectSummaryController.deleteSnapshot);
 router.post('/buffer', projectSummaryController.addBuffer);
+router.delete('/note', projectSummaryController.deleteNote);
 
 //**NO validation required */
 router.get('/all-projects', projectSummaryController.allProjects);
