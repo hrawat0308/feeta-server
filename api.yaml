@@ -519,9 +519,6 @@ paths:
                 type: string
               note: 
                 type: string
-              
-              
-        
       responses:
         201:
           description: project snapshot created
@@ -834,7 +831,6 @@ paths:
                 type: integer
               message:
                 type: string
-
   /note:
     delete:
       summary: delete a note
@@ -855,3 +851,45 @@ paths:
           description: successfull response
           schema: 
             type: string
+
+  /check-snapshot: 
+    post:
+      summary: checks a snapshot for errors
+      description: check a snapshot for errors and warnings
+      produces:
+        - application/json
+      consumes:
+        - application/json
+      parameters: 
+        - in: body
+          name: snapshot
+          schema:
+            type: object
+            properties:
+              snapshot_date: 
+                type: string
+              snapshot_url:
+                type: string 
+      responses:
+        200:
+          description: 
+          schema:
+            type: object
+        400:
+          description: validation error
+          schema:
+            type: object
+            properties:
+              status:
+                type: integer
+              message:
+                type: string
+        500:
+          description: Internal server error
+          schema:
+            type: object
+            properties: 
+              status: 
+                type: integer
+              message:
+                type: string

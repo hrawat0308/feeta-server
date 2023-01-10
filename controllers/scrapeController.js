@@ -14,9 +14,135 @@ const scrape = async (req, res, next) => {
         });
     }
     
-    await instaganttApi(req, res, next);
+    // await instaganttApi(req, res, next);
+    await instaganttApiv2(req, res, next);
     
 }
+
+const instaganttApiv2 = async (req, res, next) => {
+    let snapshot_date = req.body.snapshot_date.trim();
+    let snapshot_url = req.body.snapshot_url.trim();
+    let tempConnection;
+    let ganttChartValues = [];
+    let userAssignees = [];
+    let dependencyValues = []; dpdarr = [];
+    let users = new Map();
+    let userTaskMap = [];
+
+    try{
+        const response = await axios.get(snapshot_url+`.json`);
+        if(response){
+            let snapshot = await response.data;
+            const {tasks, project} = snapshot;
+            let project_name = project.name;
+            let project_id = project.id;
+            //project details to store in project master
+            let projectMasterValues = [project_id, project_name, snapshot_url, snapshot_date];
+            //creating assginee and user assignee array
+            ganttChartValues = tasks.map((task)=> {
+                let assignees = [];
+                assignees = task.users.map((user)=>{
+                    if(user){
+                        if(!users.has(user.user_id)){
+                            users.set(user.user_id, [user.user_id, user.name, user.email, project_id]);
+                        }
+                        userTaskMap.push([project_id, task.id, user.user_id, snapshot_date]);
+                        return user.user_id;
+                    }
+                    else{
+                        userTaskMap.push([project_id, task.id, "NA", snapshot_date]);
+                        return null; 
+                    }
+                });
+                let task_type = checkTaskType(task.custom_fields);
+                let on_cp = checkOnCp(task.custom_fields);                    
+                if(task.dependent_of.length > 0){
+                    dependencyValues = [...dependencyValues, ...task.dependent_of.map((val)=> [task.id, val, snapshot_date])];
+                }
+                return [
+                    task.id, project_id, task.name, task.subtasks == 0 ? false : true, task.is_milestone, task.parent.id ? task.parent.id : "",
+                    task.estimated_hours == "" ? 0 : task.estimated_hours, task.actual_hours == "" ? 0 : task.actual_hours, task_type,
+                    on_cp, JSON.stringify(assignees), task.progress == "" ? 0 : parseInt(task.progress.replace(/[^a-zA-Z0-9 ]/g, '')) ,
+                    task.completed == "" ? false : task.completed, task.start ? task.start : task.container.start,
+                    task.due ? task.due : task.container.due, snapshot_date, project_name 
+                ];
+            });
+            userAssignees = [...users.values()];
+            let projectMasterQuery = `INSERT INTO project_master (project_id, project, gantt_url, snapshot_date) values (?);`;
+            let ganttChartQuery = `INSERT INTO gantt_chart (uid, project_uid, task_title, is_parent, is_milestone,parent_id, estimated_hour, actual_hour,task_type, on_cp, assignees, progress, completed, start_date, end_date, snapshot_date, project_name) VALUES ?;`;
+            let  dependencyMapQuery = `INSERT INTO depends_on_map (gantt_uid, dpd_uid, snapshot_date) VALUES ?;`
+            let userMappingQuery = `INSERT IGNORE INTO user_mapping (user_id, user_name, user_email, user_project_id) VALUES ? ;`;
+            let userTaskMapQuery = `INSERT INTO user_task_map (project_id, task_uid, assignee_id, snapshot_date) VALUES ? ;`;
+            let mainQuery; 
+            let mainParams;
+
+            //** Establish MySQL connection */
+            tempConnection = await mysql.connection();
+            
+            // insertion to user_mapping table
+            if(userAssignees.length > 0){
+                mainQuery = projectMasterQuery + ganttChartQuery + dependencyMapQuery + userTaskMapQuery + userMappingQuery;
+                mainParams = [projectMasterValues, ganttChartValues, dependencyValues, userTaskMap, userAssignees];
+            }
+            else{
+                mainQuery = projectMasterQuery + ganttChartQuery + dependencyMapQuery + userTaskMapQuery;
+                mainParams = [projectMasterValues, ganttChartValues, dependencyValues, userTaskMap];
+            }
+
+            //query to insert all the data together in all tables 
+            const result = await tempConnection.query(mainQuery, [...mainParams]);
+            await tempConnection.releaseConnection();
+            res.status(201).json({ status: 1, project_id: project_id, snapshot_date: snapshot_date, message: "snasphot created " });
+        }
+    }
+    catch(error){
+        await tempConnection.releaseConnection();
+        console.log(error);
+        return res.status(500).json({
+            status: 0,
+            msg: "failed to load snapshot",
+            error: error
+        });
+    }
+}
+
+const checkTaskType = (custom_fields) => {
+    if(isEmpty(custom_fields)){
+        return "work";
+    }
+    else{
+        let value = custom_fields["7m4cTikwf0A9Cjsa4nEX"]
+        switch(value){
+            case 4 :    return "rework" ;
+                        break;         
+            case 5 :    return "learn";
+                        break;
+            case 6 :    return "external" ;
+                        break;
+            case 7 :    return "spec change";
+                        break;
+            default :   return "work";
+                        break; 
+        }
+    }
+}
+
+const checkOnCp = (custom_fields) => {
+    if(isEmpty(custom_fields)){
+        return false;
+    }else{
+        let value = custom_fields["nhPHaq7UMPYo5v50L4LE"];
+        switch(value){
+            case undefined :    return true;
+                                break;
+            case 2 :    return false;
+                        break;
+            case 1 :    return true;
+                        break;
+        }
+    }
+}
+
 
 const instaganttApi = async (req, res, next) => {
     let { snapshot_date, snapshot_url } = req.body;

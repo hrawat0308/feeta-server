@@ -2,6 +2,7 @@ const express = require('express');
 let {param, check} = require('express-validator');
 const scrapeController = require('../controllers/scrapeController');
 const projectSummaryController = require('../controllers/projectSummaryController');
+const checksController = require('../controllers/checksController');
 const router = express.Router();
 
 //**validation required */
@@ -30,5 +31,11 @@ router.get('/task-contributors', projectSummaryController.taskContributors);
 //** Test Routes */
 router.get('/progress/durationBased', projectSummaryController.progressBasedDuration);
 router.get('/progress/effortBased', projectSummaryController.progressBasedEffort);
+router.post('/check-snapshot', [
+    check('snapshot_date').not().isEmpty(),
+    check('snapshot_url').not().isEmpty()
+]
+, checksController.check_Errors_Warnings);
+
 
 module.exports = router;
