@@ -216,10 +216,10 @@ const overduecheck = (test) => {
         if(new Date(values.due) < new Date(today.getFullYear(),today.getMonth(),today.getDate()) && (values.completed == "" || values.completed == false) && values.progress != "100%"){
             let users = values.users.map((user)=>{
                 return {
-                    user_id : user?.user_id,
-                    id: user?.id,
-                    name: user?.name,
-                    email: user?.email
+                    user_id : user ? user.user_id : undefined,
+                    id: user ? user.id : undefined,
+                    name: user ? user.name : undefined,
+                    email: user ? user.email : undefined
                 }
             });
             result = [...result, {
