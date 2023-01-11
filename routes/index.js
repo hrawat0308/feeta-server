@@ -3,6 +3,8 @@ let {param, check} = require('express-validator');
 const scrapeController = require('../controllers/scrapeController');
 const projectSummaryController = require('../controllers/projectSummaryController');
 const checksController = require('../controllers/checksController');
+const criticalPathController = require('../controllers/CriticalPath/criticalPathController');
+const updateCriticalPath = require('../controllers/CriticalPath/criticalPath');
 const router = express.Router();
 
 //**validation required */
@@ -23,6 +25,12 @@ router.get('/latest-project-summary', projectSummaryController.loadLatestProject
 router.delete('/snapshot', projectSummaryController.deleteSnapshot);
 router.post('/buffer', projectSummaryController.addBuffer);
 router.delete('/note', projectSummaryController.deleteNote);
+router.get('/criticalPath', criticalPathController.criticalPath);
+router.post('/check-snapshot', [
+    check('snapshot_date').not().isEmpty(),
+    check('snapshot_url').not().isEmpty()
+]
+, checksController.check_Errors_Warnings);
 
 //**NO validation required */
 router.get('/all-projects', projectSummaryController.allProjects);
@@ -31,11 +39,9 @@ router.get('/task-contributors', projectSummaryController.taskContributors);
 //** Test Routes */
 router.get('/progress/durationBased', projectSummaryController.progressBasedDuration);
 router.get('/progress/effortBased', projectSummaryController.progressBasedEffort);
-router.post('/check-snapshot', [
-    check('snapshot_date').not().isEmpty(),
-    check('snapshot_url').not().isEmpty()
-]
-, checksController.check_Errors_Warnings);
+router.post('/criticalPath', updateCriticalPath.updateCriticalPath);
+
+
 
 
 module.exports = router;

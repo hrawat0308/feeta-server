@@ -3,9 +3,6 @@ const axios = require("axios")
 const express = require('express');
 let { validationResult } = require('express-validator');
 
-//map initialization
-const test = new Map();
-
 const check_Errors_Warnings = async (req, res, next) => {
     const validation_errors = validationResult(req);
     if (!validation_errors.isEmpty()) {
@@ -19,13 +16,10 @@ const check_Errors_Warnings = async (req, res, next) => {
     let snapshot_url = req.body.snapshot_url.trim();
     let errors; let warnings;
     let snapshoData;
-
-    //empty the map
-    test.clear();
     try{
-        const snapshot = await fetchDataAsync(snapshot_url+'.json');
-        errors = checkErrors();
-        warnings = checkWarnings();
+        const [snapshot, test] = await fetchDataAsync(snapshot_url+'.json');
+        errors = checkErrors(test);
+        warnings = checkWarnings(test);
         if(errors.hanging.length === 0 && errors.time.length === 0){
             snapshoData = scrape_data(snapshot_url, snapshot_date, snapshot);
         }
@@ -85,6 +79,8 @@ const scrape_data = (snapshot_url, snapshot_date, snapshot) => {
 
 async function fetchDataAsync(url) {
     const response = await axios.get(url);
+    //map initialization
+    const test = new Map();
     if(response){
         snapshot = await response.data;
         const {tasks, project} = snapshot;
@@ -97,7 +93,7 @@ async function fetchDataAsync(url) {
             }
         });
 
-        return snapshot;
+        return [snapshot, test];
     }
     else{
         throw new Error("Failed to load snapshot");
@@ -113,15 +109,15 @@ const checkDependentOfArray = (arr) => {
     }
 }
 
-const getSuccessorStartTime = (successorsID) => {
+const getSuccessorStartTime = (successorsID, test) => {
     return new Date(test.get(successorsID).start);
 }
 
-const getPredecessorDueTime = (predecessorID) => {
+const getPredecessorDueTime = (predecessorID, test) => {
     return new Date(test.get(predecessorID).due);
 }
 
-const checkSuccessorTime = (curTask) => {
+const checkSuccessorTime = (curTask, test) => {
     let successors = [];
     let result = {
         status : 0,
@@ -142,8 +138,8 @@ const checkSuccessorTime = (curTask) => {
     });
 
     for(let i = 0; i < successors.length; i++){
-        let P_Date = getPredecessorDueTime(curTask); 
-        let S_Date = getSuccessorStartTime(successors[i]);
+        let P_Date = getPredecessorDueTime(curTask, test); 
+        let S_Date = getSuccessorStartTime(successors[i], test);
         if( P_Date > S_Date){
             timeObject.P_ID = curTask;
             timeObject.S_ID = successors[i];
@@ -160,7 +156,7 @@ const checkSuccessorTime = (curTask) => {
     
 }
 
-const findTask1 = (tasks) => {
+const findTask1 = (test) => {
     let [firstValue] = test.values();
     let firstTask = new Date(firstValue.start);
     let task1 = {
@@ -179,14 +175,14 @@ const findTask1 = (tasks) => {
     return task1;
 }
 
-const checkForSubtaskandDependency = () => {
+const checkForSubtaskandDependency = (test) => {
     let result = [];
     test.forEach((values,keys)=>{
         if(values.subtasks == 0 && checkDependentOfArray(values.dependent_of) && values.is_milestone == false ){
             result = [...result, { id: values.id, name : values.name}]
         }
     });
-    const firstTask = findTask1();
+    const firstTask = findTask1(test);
     result = result.filter((obj)=>{
         return (obj.id !== firstTask.id)
     });
@@ -203,7 +199,7 @@ const checkUsersArray = (arr) => {
     }
 }
 
-const checkAssignees = () => {       
+const checkAssignees = (test) => {       
     let result = [];
     test.forEach((values,keys)=>{
         if(values.subtasks == 0 && checkUsersArray(values.users) && values.is_milestone == false ){
@@ -213,7 +209,7 @@ const checkAssignees = () => {
     return result;
 }
 
-const overduecheck = () => {
+const overduecheck = (test) => {
     let result = [];
     const today = new Date();
     test.forEach((values, keys)=>{
@@ -236,7 +232,7 @@ const overduecheck = () => {
     return result;
 }
 
-const checkEH_AH = (taskIDs) => {
+const checkEH_AH = (taskIDs, test) => {
     let result = [];
     for(let i = 0; i < taskIDs.length ; i++){
         const data = test.get(taskIDs[i]);
@@ -247,7 +243,7 @@ const checkEH_AH = (taskIDs) => {
     return result;
 }
 
-const descriptionCheck = (taskIDs) => {
+const descriptionCheck = (taskIDs, test) => {
     let result = [];
     for(let i = 0; i < taskIDs.length ; i++){
         const data = test.get(taskIDs[i]);
@@ -258,10 +254,10 @@ const descriptionCheck = (taskIDs) => {
     return result;
 }
 
-const checkSubtasksDate = (subtasksIDs) =>{
+const checkSubtasksDate = (subtasksIDs, test) =>{
     let result = [];
     for(let i = 0; i < subtasksIDs.length; i++){
-        const timeResult = checkSuccessorTime(subtasksIDs[i]);
+        const timeResult = checkSuccessorTime(subtasksIDs[i], test);
         if(!timeResult.status){
             result = [...result, ...timeResult];
         }   
@@ -269,28 +265,28 @@ const checkSubtasksDate = (subtasksIDs) =>{
     return result;
 }
 
-const checkErrors = () => {
+const checkErrors = (test) => {
     // get subtasks object
     let subtasks = [...test.values()];
 
     // get subtasks ID
     let subtasksIDs = [...test.keys()];
     let result = {};
-    let result1 = checkForSubtaskandDependency();
-    let result2 = checkSubtasksDate(subtasksIDs);
+    let result1 = checkForSubtaskandDependency(test);
+    let result2 = checkSubtasksDate(subtasksIDs, test);
     
     result.hanging = result1;
     result.time = result2;
     return result;
 }
 
-const checkWarnings = () => {
+const checkWarnings = (test) => {
     let result = {};
-    let assignee = checkAssignees();
-    let overdue = overduecheck();
+    let assignee = checkAssignees(test);
+    let overdue = overduecheck(test);
     let subtasksIDs = [...test.keys()];
-    let estimate_actual_hours = checkEH_AH(subtasksIDs);
-    let description = descriptionCheck(subtasksIDs);
+    let estimate_actual_hours = checkEH_AH(subtasksIDs, test);
+    let description = descriptionCheck(subtasksIDs, test);
     result.assignee = assignee;
     result.overdue = overdue;
     result.estimate_actual_hours = estimate_actual_hours;
