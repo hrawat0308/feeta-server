@@ -288,7 +288,7 @@ const projectSummary = async (req, res, next) => {
             }
         });
 
-        let parentIDTitleMap;
+        let parentIDTitleMap = new Map();
         if(parents_title.length !== 0){
             const getParentsTitle = await tempConnection.query(`select uid, task_title from gantt_chart where uid in (?) and snapshot_date = '${snapshot_date}';`, [parents_title]);
             if(getParentsTitle.length !== 0){
