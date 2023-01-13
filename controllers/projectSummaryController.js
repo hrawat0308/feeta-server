@@ -493,24 +493,54 @@ const contributorDetail = async (req, res, next) =>{
     const contributor_id = req.query.contributor_id;
     const snapshot_date = req.query.snapshot_date;
     const compare_to = req.query.compare_to;
+    // OLD TRY BLOCK
+    // try{
+    //     tempConnection = await mysql.connection();
+    //     let contributorData = await tempConnection.query(`SELECT gantt_chart.project_name, gantt_chart.project_uid, gantt_chart.uid, gantt_chart.task_title, gantt_chart.start_date, gantt_chart.end_date, gantt_chart.task_type, gantt_chart.progress, user_mapping.user_name FROM gantt_chart INNER JOIN user_task_map ON gantt_chart.project_uid=user_task_map.project_id and gantt_chart.uid = user_task_map.task_uid and gantt_chart.snapshot_date = user_task_map.snapshot_date INNER JOIN user_mapping on user_task_map.assignee_id = user_mapping.user_id and user_task_map.assignee_id = '${contributor_id}' and gantt_chart.snapshot_date='${snapshot_date}' and gantt_chart.project_uid = '${project_id}' order by gantt_chart.start_date`);
+    //     //removing duplicate entries of tasks
+    //     contributorData = [...new Map(contributorData.map(v => [v.uid, v])).values()];
+    //     for (var i = 0; i < contributorData.length; i++) {
+    //         //three option for task status ON_TIME, LATE, OVERDUE
+    //         let task_status = "ON_TIME";
+    //         if ((new Date(contributorData[i].end_date) < new Date(snapshot_date)) && (contributorData[i].progress < 100)) {
+    //           task_status = "OVERDUE";
+    //         }
+    //         else {
+    //             const compare_data = await tempConnection.query(`select * from gantt_chart where uid = '${contributorData[i].uid}' and snapshot_date = '${compare_to}' and project_uid = '${project_id}' and end_date < '${new Date(contributorData[i].end_date).toISOString().substring(0,10)}' and completed = 1`);
+    //             compare_data.length > 0 ? task_status = "LATE" : task_status = "ON_TIME"; 
+    //         }
+    //         contributorData[i]["task_status"] = task_status;
+    //         // contributorData[i]["crr_end"] = compare_data[i].end_date;
+    //     }
+    //     await tempConnection.releaseConnection();
+    //     res.status(200).json({ status: 1, complianceScore: "", productivityScore: "", timelinessScore: "", contributorData });
+    // }
+    
+    // New Try Block 
     try{
         tempConnection = await mysql.connection();
-        let contributorData = await tempConnection.query(`SELECT gantt_chart.project_name, gantt_chart.project_uid, gantt_chart.uid, gantt_chart.task_title, gantt_chart.start_date, gantt_chart.end_date, gantt_chart.task_type, gantt_chart.progress, user_mapping.user_name FROM gantt_chart INNER JOIN user_task_map ON gantt_chart.project_uid=user_task_map.project_id and gantt_chart.uid = user_task_map.task_uid and gantt_chart.snapshot_date = user_task_map.snapshot_date INNER JOIN user_mapping on user_task_map.assignee_id = user_mapping.user_id and user_task_map.assignee_id = '${contributor_id}' and gantt_chart.snapshot_date='${snapshot_date}' and gantt_chart.project_uid = '${project_id}' order by gantt_chart.start_date`);
-        //removing duplicate entries of tasks
-        contributorData = [...new Map(contributorData.map(v => [v.uid, v])).values()];
-        for (var i = 0; i < contributorData.length; i++) {
-            //three option for task status ON_TIME, LATE, OVERDUE
-            let task_status = "ON_TIME";
-            if ((new Date(contributorData[i].end_date) < new Date(snapshot_date)) && (contributorData[i].progress < 100)) {
-              task_status = "OVERDUE";
-            }
-            else {
-                const compare_data = await tempConnection.query(`select * from gantt_chart where uid = '${contributorData[i].uid}' and snapshot_date = '${compare_to}' and project_uid = '${project_id}' and end_date < '${new Date(contributorData[i].end_date).toISOString().substring(0,10)}' and completed = 1`);
-                compare_data.length > 0 ? task_status = "LATE" : task_status = "ON_TIME"; 
-            }
-            contributorData[i]["task_status"] = task_status;
-            // contributorData[i]["crr_end"] = compare_data[i].end_date;
-        }
+        const query = `select curr.project_name, curr.project_uid, curr.uid, curr.task_type, curr.task_title, DATE_FORMAT(base.end_date,"%Y-%m-%d") as base_end_date, 
+        DATE_FORMAT(curr.end_date,"%Y-%m-%d") as end_date, DATE_FORMAT(curr.start_date,"%Y-%m-%d") as start_date,
+        (DATEDIFF(curr.end_date, base.end_date)) as diff, curr.progress, curr.completed,utm.assignee_id, um.user_name, um.user_id,
+        case 
+            when (curr.progress < 100 && curr.end_date < '${snapshot_date}')
+                then "OVERDUE"
+            when (curr.completed = 1 && base.end_date < curr.end_date)
+                    then "LATE"
+            else "ON_TIME"
+        end as task_status
+        from gantt_chart curr inner join 
+            ( select task_id, uid, task_title, end_date from gantt_chart where snapshot_date = '${compare_to}' and project_uid = '${project_id}') base
+            on curr.uid = base.uid
+            and curr.snapshot_date = '${snapshot_date}'
+            and curr.project_uid = '${project_id}'
+            and curr.is_milestone is false and curr.is_parent is false
+            inner join user_task_map utm on utm.task_uid = curr.uid
+            and utm.project_id = '${project_id}' and utm.snapshot_date = '${snapshot_date}'
+            inner join user_mapping um on um.user_id = utm.assignee_id and um.user_project_id = '${project_id}' 
+            and um.user_id = '${contributor_id}' order by curr.start_date;`;
+        
+        let contributorData = await tempConnection.query(query);
         await tempConnection.releaseConnection();
         res.status(200).json({ status: 1, complianceScore: "", productivityScore: "", timelinessScore: "", contributorData });
     }
