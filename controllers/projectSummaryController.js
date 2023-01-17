@@ -735,17 +735,19 @@ const timelinessTaskDetails = async (req, res, next) => {
                 task.base_end_date = task_id_data_map.get(task.uid).end_date;
                 diffAEBE = diffDays_inPerformance(new Date(task.end_date), new Date(task.base_end_date));
                 task.AEsubBE = diffAEBE;
-                numOfNonWorkingDays = checkWeekends(new Date(task.start_date), new Date(task.end_date),working_days, payload_dates);
+                numOfNonWorkingDays = checkWeekends(new Date(task.start_date), new Date(task.end_date), working_days, payload_dates);
                 task.num_of_nonWorkingDays = numOfNonWorkingDays;
                 task.user_delay = [];
                 task.predec_delay = 0;
                 task.net_delay = 0;
+                task.traversed_pred = [];
             }
             else{
                 task.base_end_date = "NA";
                 task.predec_delay = 0;
                 task.AEsubBE = 0;
                 task.net_delay = 0;
+                task.traversed_pred = [];
             }
             task.assignees = JSON.parse(task.assignees);
             task.assignees.forEach((assignee)=>{if(assignee){allAssignee.push(assignee)}});    
@@ -788,43 +790,46 @@ const timelinessTaskDetails = async (req, res, next) => {
             dpdMappingBaseline.push(dpd);
         });
 
-        for(let i=0; i < dpdMapping.length; i++){
+        for(let i = 0; i < dpdMapping.length; i++   ){
+            let cur_task_uid = dpdMapping[i][0];
             let pred_task_uid = dpdMapping[i][1];
-            let successor_uid = dpdMapping[i][0];
             if(delayArrayMap.has(pred_task_uid)){
                 const pred = delayArrayMap.get(pred_task_uid);
-                let new_predec_uid;
                 if(pred.base_end_date == "NA"){
-                    let predecessor_delay = 0;
-                    for(var k = 0; k < dpdMappingBaseline.length; k++){
-                        if(successor_uid == dpdMappingBaseline[k][0]){
-                            new_predec_uid = dpdMappingBaseline[k][1];
-                            if(delayArrayMap.has(new_predec_uid)){
-                                const a = delayArrayMap.get(new_predec_uid);
-                                let predDelay = diffDays(new Date(pred.end_date), new Date(a.base_end_date));
-                                predecessor_delay = Math.max(predDelay, predecessor_delay);
-                            }
-
-                            if(delayArrayMap.has(successor_uid)){
-                                const b = delayArrayMap.get(successor_uid);
-                                b.predec_delay = predecessor_delay;
-                                b.net_delay = b.AEsubBE;
-                                b.net_delay = (b.net_delay == 0) ? b.net_delay : b.net_delay -  b.predec_delay - b.num_of_nonWorkingDays;
-                                delayArrayMap.set(successor_uid, b);
-                            }
+                    let task_duration = diffDays(new Date(pred.end_date), new Date(pred.start_date))+1;
+                    if(delayArrayMap.has(cur_task_uid)){
+                        const cur = delayArrayMap.get(cur_task_uid);
+                        if(!cur.traversed_pred.includes(pred_task_uid)){
+                            cur.predec_delay +=  task_duration;
+                            cur.traversed_pred.push(pred_task_uid);
+                            delayArrayMap.set(cur_task_uid, cur);
                         }
                     }
+                    for(let k = 0; k < dpdMappingBaseline.length; k++){
+                        if(cur_task_uid == dpdMappingBaseline[k][0]){
+                            const cur = delayArrayMap.get(cur_task_uid);
+                            let old_predec_uid = dpdMappingBaseline[k][1];
+                            if(delayArrayMap.has(old_predec_uid)){
+                                const old_pred = delayArrayMap.get(old_predec_uid);
+                                if(!cur.traversed_pred.includes(old_predec_uid)){
+                                    let predDelay = old_pred.AEsubBE;
+                                    cur.predec_delay +=  predDelay;
+                                    cur.traversed_pred.push(old_predec_uid);
+                                    delayArrayMap.set(cur_task_uid, cur);
+                                }
+                            }
+                        }
+                    }   
                 }
                 else{
-                    let predecessor_delay = 0;
-                    let predDelay = diffDays(new Date(pred.end_date), new Date(pred.base_end_date));
-                    predecessor_delay = Math.max(predDelay, predecessor_delay);
-                    if(delayArrayMap.has(successor_uid)){
-                        const b = delayArrayMap.get(successor_uid);
-                        b.predec_delay = predecessor_delay;
-                        b.net_delay = b.AEsubBE; 
-                        b.net_delay = (b.net_delay == 0) ? b.net_delay : b.net_delay -  b.predec_delay - b.num_of_nonWorkingDays;
-                        delayArrayMap.set(successor_uid, b);
+                    let predDelay = pred.AEsubBE;
+                    if(delayArrayMap.has(cur_task_uid)){
+                        const cur = delayArrayMap.get(cur_task_uid);
+                        if(!cur.traversed_pred.includes(pred_task_uid)){
+                            cur.predec_delay = cur.predec_delay + predDelay;
+                            cur.traversed_pred.push(pred_task_uid);
+                            delayArrayMap.set(cur_task_uid, cur);   
+                        }
                     }
                 }
             }
@@ -832,6 +837,7 @@ const timelinessTaskDetails = async (req, res, next) => {
         
         delayArray = [...delayArrayMap.values()]
         delayArray.forEach((task)=>{
+            task.net_delay = task.AEsubBE === 0 ? task.net_delay : task.AEsubBE - task.predec_delay - task.num_of_nonWorkingDays;
             const assignees = [];
             for(let i = 0; i < task.assignees.length; i++){
                 if(task.assignees[i]){
