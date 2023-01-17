@@ -714,6 +714,17 @@ const timelinessTaskDetails = async (req, res, next) => {
         const baselineData = [...base_data];
         working_days = {"0":false,"1":true,"2":true,"3":true,"4":true,"5":true,"6":false};
         // payload_dates = JSON.parse([{"name": "EL","color": "highlight-1","end": "2023-01-02","id": "0hu6PnaNquFjaHvTmX7l","is_holiday": true,"on_workspace": true,"start": "2023-01-02","supplier_project_id": "","disabled": false,"user_id": "lPcX4XZJXP0MRb0XBO10"}]);
+        const delays = await tempConnection.query(`select DATE_FORMAT(max(curr.end_date),"%Y-%m-%d") as curr_end_date, DATE_FORMAT(max(base.end_date),"%Y-%m-%d") as base_end_date,  datediff(max(curr.end_date), max(base.end_date)) delay_days from 
+        gantt_chart curr 
+        inner join gantt_chart base on curr.project_uid = base.project_uid 
+        and curr.snapshot_date = '${snapshot_date}' and base.snapshot_date = '${baseline_date}' where curr.project_uid = '${project_id}';`);
+        const delay_block = {
+            delay : delays[0].delay_days,
+            from : delays[0].base_end_date,
+            to : delays[0].curr_end_date,
+            non_working_days : checkWeekends(new Date(this.from), new Date(this.to),working_days, payload_dates),
+        };
+        delay_block.delay_tasks = delay_block.delay - delay_block.non_working_days;
         const task_id_data_map = new Map(baselineData.map(task => [task.uid, task]));
         let diffAEBE;
         const delayArrforMap = [];
@@ -845,7 +856,7 @@ const timelinessTaskDetails = async (req, res, next) => {
             }
         });
        
-        res.json({ delayArray});
+        res.json({ delayArray, delay_block});
     }
     catch(error){
         await tempConnection.releaseConnection();
