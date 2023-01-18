@@ -37,7 +37,7 @@ const snapshotDates = async (req, res, next) => {
     let tempConnection;
     try{
         tempConnection = await mysql.connection();
-        const snapshot_dates = await tempConnection.query(`select distinct DATE_FORMAT(snapshot_date, "%Y-%m-%d") as snapshot_date from gantt_chart where project_uid = '${project_id}';`);
+        const snapshot_dates = await tempConnection.query(`select distinct DATE_FORMAT(snapshot_date, "%Y-%m-%d") as snapshot_date from gantt_chart where project_uid = '${project_id}' order by snapshot_date desc;`);
         await tempConnection.releaseConnection();
         return res.status(200).json({ status: 1, snapshotDates : snapshot_dates });
     }
@@ -1178,7 +1178,7 @@ const getCompareTodate = async (req, res, next) => {
     let tempConnection;
     try{
         tempConnection = await mysql.connection();
-        dates = await tempConnection.query(`select distinct DATE_FORMAT(snapshot_date, "%Y-%m-%d") as snapshot_date from gantt_chart where project_uid = '${projectID}' and snapshot_date < "${snapshot_date}";`);
+        dates = await tempConnection.query(`select distinct DATE_FORMAT(snapshot_date, "%Y-%m-%d") as snapshot_date from gantt_chart where project_uid = '${projectID}' and snapshot_date < "${snapshot_date}" order by snapshot_date desc;`);
         await tempConnection.releaseConnection();
         res.status(200).json({ status: 1, snapshotDates : dates });
     }
