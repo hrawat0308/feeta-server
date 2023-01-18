@@ -247,7 +247,7 @@ const descriptionCheck = (taskIDs, test) => {
     let result = [];
     for(let i = 0; i < taskIDs.length ; i++){
         const data = test.get(taskIDs[i]);
-        if(data.notes.length < 5){
+        if(data.completed && data.notes.length < 5){
             result = [...result, { id: data.id, name : data.name}];
         }
     }
