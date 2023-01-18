@@ -807,15 +807,17 @@ const timelinessTaskDetails = async (req, res, next) => {
                     }
                     for(let k = 0; k < dpdMappingBaseline.length; k++){
                         if(cur_task_uid == dpdMappingBaseline[k][0]){
-                            const cur = delayArrayMap.get(cur_task_uid);
-                            let old_predec_uid = dpdMappingBaseline[k][1];
-                            if(delayArrayMap.has(old_predec_uid)){
+                            if(delayArrayMap.has(cur_task_uid)){
+                                const cur = delayArrayMap.get(cur_task_uid);
+                                let old_predec_uid = dpdMappingBaseline[k][1];
+                                if(delayArrayMap.has(old_predec_uid)){
                                 const old_pred = delayArrayMap.get(old_predec_uid);
                                 if(!cur.traversed_pred.includes(old_predec_uid)){
                                     let predDelay = old_pred.AEsubBE;
                                     cur.predec_delay +=  predDelay;
                                     cur.traversed_pred.push(old_predec_uid);
                                     delayArrayMap.set(cur_task_uid, cur);
+                                    }
                                 }
                             }
                         }
