@@ -735,14 +735,16 @@ const timelinessTaskDetails = async (req, res, next) => {
                 task.base_end_date = task_id_data_map.get(task.uid).end_date;
                 diffAEBE = diffDays_inPerformance(new Date(task.end_date), new Date(task.base_end_date));
                 task.AEsubBE = diffAEBE;
-                numOfNonWorkingDays = checkWeekends(new Date(task.start_date), new Date(task.end_date), working_days, payload_dates);
+                numOfNonWorkingDays = checkWeekends(new Date(task.end_date), new Date(task.base_end_date), working_days, payload_dates);
                 task.num_of_nonWorkingDays = numOfNonWorkingDays;
                 task.user_delay = [];
                 task.predec_delay = 0;
+                task.predecessor_delay = [];
                 task.net_delay = 0;
                 task.traversed_pred = [];
             }
             else{
+                task.predecessor_delay = [];
                 task.base_end_date = "NA";
                 task.predec_delay = 0;
                 task.AEsubBE = 0;
@@ -800,7 +802,7 @@ const timelinessTaskDetails = async (req, res, next) => {
                     if(delayArrayMap.has(cur_task_uid)){
                         const cur = delayArrayMap.get(cur_task_uid);
                         if(!cur.traversed_pred.includes(pred_task_uid)){
-                            cur.predec_delay +=  task_duration;
+                            cur.predecessor_delay.push(task_duration);
                             cur.traversed_pred.push(pred_task_uid);
                             delayArrayMap.set(cur_task_uid, cur);
                         }
@@ -813,8 +815,7 @@ const timelinessTaskDetails = async (req, res, next) => {
                                 if(delayArrayMap.has(old_predec_uid)){
                                 const old_pred = delayArrayMap.get(old_predec_uid);
                                 if(!cur.traversed_pred.includes(old_predec_uid)){
-                                    let predDelay = old_pred.AEsubBE;
-                                    cur.predec_delay +=  predDelay;
+                                    cur.predecessor_delay.push(old_pred.AEsubBE);
                                     cur.traversed_pred.push(old_predec_uid);
                                     delayArrayMap.set(cur_task_uid, cur);
                                     }
@@ -828,7 +829,7 @@ const timelinessTaskDetails = async (req, res, next) => {
                     if(delayArrayMap.has(cur_task_uid)){
                         const cur = delayArrayMap.get(cur_task_uid);
                         if(!cur.traversed_pred.includes(pred_task_uid)){
-                            cur.predec_delay = cur.predec_delay + predDelay;
+                            cur.predecessor_delay.push(predDelay);
                             cur.traversed_pred.push(pred_task_uid);
                             delayArrayMap.set(cur_task_uid, cur);   
                         }
@@ -839,6 +840,7 @@ const timelinessTaskDetails = async (req, res, next) => {
         
         delayArray = [...delayArrayMap.values()]
         delayArray.forEach((task)=>{
+            task.predec_delay = task.predecessor_delay.length > 0 ? Math.max(...task.predecessor_delay) : 0;
             task.net_delay = task.AEsubBE === 0 ? task.net_delay : task.AEsubBE - task.predec_delay - task.num_of_nonWorkingDays;
             const assignees = [];
             for(let i = 0; i < task.assignees.length; i++){
